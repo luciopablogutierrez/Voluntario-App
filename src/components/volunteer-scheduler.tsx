@@ -169,7 +169,7 @@ export default function VolunteerScheduler() {
               month={viewDate}
               onMonthChange={setViewDate}
               selected={selectedRange}
-              onDayClick={(day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
+              onSelect={(range, day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
               fromDate={startDate}
               toDate={endDate}
               disabled={(date) => date < startDate || date > endDate}
@@ -185,7 +185,7 @@ export default function VolunteerScheduler() {
             month={calendarMonth}
             onMonthChange={setCalendarMonth}
             selected={selectedRange}
-            onDayClick={(day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
+            onSelect={(range, day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
             fromDate={startDate}
             toDate={endDate}
             disabled={(date) => date < startDate || date > endDate}
