@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { TimeSlotCard } from "@/components/time-slot-card";
+import { SummaryCard } from "@/components/summary-card";
 
 type Schedule = Record<string, Record<string, string[]>>;
 
@@ -13,6 +14,8 @@ const morningSlots = ["09:00", "10:00", "11:00", "12:00"];
 const afternoonSlots = ["16:00", "17:00", "18:00", "19:00"];
 const startDate = new Date("2024-07-18T00:00:00");
 const endDate = new Date("2024-09-07T23:59:59");
+
+const totalSlots = morningSlots.length + afternoonSlots.length;
 
 export default function VolunteerScheduler() {
   const [schedule, setSchedule] = useState<Schedule>({});
@@ -34,6 +37,19 @@ export default function VolunteerScheduler() {
 
   const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const daySchedule = schedule[selectedDateKey] || {};
+
+  const summary = useMemo(() => {
+    if (!selectedDate) {
+      return { totalVolunteers: 0, coveredSlots: 0, freeSlots: totalSlots, totalSlots };
+    }
+
+    const totalVolunteers = Object.values(daySchedule).flat().length;
+    const coveredSlots = Object.values(daySchedule).filter(v => v.length > 0).length;
+    const freeSlots = totalSlots - coveredSlots;
+    
+    return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
+  }, [daySchedule, selectedDate]);
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -83,6 +99,7 @@ export default function VolunteerScheduler() {
                 ))}
               </div>
             </div>
+            <SummaryCard {...summary} />
           </div>
         ) : (
           <Card className="flex items-center justify-center h-96 lg:col-span-2 shadow-lg">
