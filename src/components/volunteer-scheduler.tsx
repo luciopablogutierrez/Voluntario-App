@@ -1,25 +1,31 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval } from "date-fns";
 import { es } from "date-fns/locale";
-import { Card } from "@/components/ui/card";
+import type { DateRange } from "react-day-picker";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { TimeSlotCard } from "@/components/time-slot-card";
 import { SummaryCard } from "@/components/summary-card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Schedule = Record<string, Record<string, string[]>>;
+type ViewMode = "day" | "week" | "month";
 
 const morningSlots = ["09:00", "10:00", "11:00", "12:00"];
 const afternoonSlots = ["16:00", "17:00", "18:00", "19:00"];
 const startDate = new Date("2024-07-18T00:00:00");
 const endDate = new Date("2024-09-07T23:59:59");
 
-const totalSlots = morningSlots.length + afternoonSlots.length;
+const dailyTotalSlots = morningSlots.length + afternoonSlots.length;
 
 export default function VolunteerScheduler() {
   const [schedule, setSchedule] = useState<Schedule>({});
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(startDate);
+  const [mode, setMode] = useState<ViewMode>("day");
+  
+  const [selectedDay, setSelectedDay] = useState<Date | undefined>(startDate);
+  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
 
   const handleAddVolunteer = (date: Date, time: string, name: string) => {
     const dateKey = format(date, "yyyy-MM-dd");
@@ -34,44 +40,89 @@ export default function VolunteerScheduler() {
       return newSchedule;
     });
   };
+  
+  const handleDayClick = (day: Date) => {
+    if (day < startDate || day > endDate) return;
 
-  const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
-  const daySchedule = schedule[selectedDateKey] || {};
+    if (mode === "day") {
+      setSelectedDay(day);
+      setSelectedRange(undefined);
+    } else if (mode === "week") {
+      const from = startOfWeek(day, { locale: es });
+      const to = endOfWeek(day, { locale: es });
+      setSelectedRange({ from, to });
+      setSelectedDay(undefined);
+    } else {
+      const from = startOfMonth(day);
+      const to = endOfMonth(day);
+      setSelectedRange({ from, to });
+      setSelectedDay(undefined);
+    }
+  };
 
   const summary = useMemo(() => {
-    if (!selectedDate) {
-      return { totalVolunteers: 0, coveredSlots: 0, freeSlots: totalSlots, totalSlots };
+    if (mode === 'day' && selectedDay) {
+        const daySchedule = schedule[format(selectedDay, "yyyy-MM-dd")] || {};
+        const totalVolunteers = Object.values(daySchedule).flat().length;
+        const coveredSlots = Object.values(daySchedule).filter(v => v.length > 0).length;
+        const freeSlots = dailyTotalSlots - coveredSlots;
+        return { totalVolunteers, coveredSlots, freeSlots, totalSlots: dailyTotalSlots };
+    }
+    
+    if ((mode === 'week' || mode === 'month') && selectedRange?.from && selectedRange?.to) {
+        const daysInInterval = eachDayOfInterval({ start: selectedRange.from, end: selectedRange.to })
+            .filter(d => isWithinInterval(d, {start: startDate, end: endDate}));
+        
+        let totalVolunteers = 0;
+        let coveredSlots = 0;
+
+        for (const day of daysInInterval) {
+            const dateKey = format(day, "yyyy-MM-dd");
+            const daySchedule = schedule[dateKey] || {};
+            totalVolunteers += Object.values(daySchedule).flat().length;
+            coveredSlots += Object.values(daySchedule).filter(v => v.length > 0).length;
+        }
+        
+        const totalSlots = daysInInterval.length * dailyTotalSlots;
+        const freeSlots = totalSlots - coveredSlots;
+        return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
     }
 
-    const totalVolunteers = Object.values(daySchedule).flat().length;
-    const coveredSlots = Object.values(daySchedule).filter(v => v.length > 0).length;
-    const freeSlots = totalSlots - coveredSlots;
-    
-    return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
-  }, [daySchedule, selectedDate]);
+    return { totalVolunteers: 0, coveredSlots: 0, freeSlots: dailyTotalSlots, totalSlots: dailyTotalSlots };
+  }, [mode, selectedDay, selectedRange, schedule]);
 
-
+  const selectedProp = mode === "day" ? selectedDay : selectedRange;
+  
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-      <Card className="lg:col-span-1 flex justify-center shadow-lg">
+      <Card className="lg:col-span-1 shadow-lg">
+        <div className="p-4 border-b">
+          <Tabs value={mode} onValueChange={(value) => setMode(value as ViewMode)} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="day">Día</TabsTrigger>
+              <TabsTrigger value="week">Semana</TabsTrigger>
+              <TabsTrigger value="month">Mes</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
         <Calendar
-          mode="single"
-          selected={selectedDate}
-          onSelect={setSelectedDate}
+          mode={mode === "day" ? "single" : "range"}
+          selected={selectedProp}
+          onDayClick={handleDayClick}
           fromDate={startDate}
           toDate={endDate}
           disabled={(date) => date < startDate || date > endDate}
-          initialFocus
+          initialFocus={mode === 'day'}
           locale={es}
-          className="p-4"
+          className="p-4 flex justify-center"
         />
       </Card>
 
       <div className="lg:col-span-2 space-y-8">
-        {selectedDate ? (
+        {mode === 'day' && selectedDay ? (
           <div className="space-y-8 transition-opacity duration-300">
             <h2 className="text-3xl font-bold font-headline text-primary-foreground text-center capitalize">
-              {format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
+              {format(selectedDay, "EEEE, d 'de' MMMM", { locale: es })}
             </h2>
             <div className="p-6 bg-card rounded-xl shadow-lg">
               <h3 className="text-xl font-semibold mb-4 text-primary">Mañana (9:00 - 13:00)</h3>
@@ -80,8 +131,8 @@ export default function VolunteerScheduler() {
                   <TimeSlotCard
                     key={time}
                     time={time}
-                    volunteers={daySchedule[time] || []}
-                    onAddVolunteer={(name) => handleAddVolunteer(selectedDate, time, name)}
+                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time] || []}
+                    onAddVolunteer={(name) => handleAddVolunteer(selectedDay, time, name)}
                   />
                 ))}
               </div>
@@ -93,12 +144,19 @@ export default function VolunteerScheduler() {
                   <TimeSlotCard
                     key={time}
                     time={time}
-                    volunteers={daySchedule[time] || []}
-                    onAddVolunteer={(name) => handleAddVolunteer(selectedDate, time, name)}
+                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time] || []}
+                    onAddVolunteer={(name) => handleAddVolunteer(selectedDay, time, name)}
                   />
                 ))}
               </div>
             </div>
+            <SummaryCard {...summary} />
+          </div>
+        ) : mode !== 'day' && selectedRange?.from && selectedRange?.to ? (
+          <div className="space-y-8 transition-opacity duration-300">
+             <h2 className="text-3xl font-bold font-headline text-primary-foreground text-center capitalize">
+              {format(selectedRange.from, "d MMM", { locale: es })} - {format(selectedRange.to, "d MMM, yyyy", { locale: es })}
+            </h2>
             <SummaryCard {...summary} />
           </div>
         ) : (
