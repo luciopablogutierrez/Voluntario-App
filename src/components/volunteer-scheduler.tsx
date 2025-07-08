@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { TimeSlotCard } from "@/components/time-slot-card";
 import { SummaryCard } from "@/components/summary-card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type Schedule = Record<string, Record<string, string[]>>;
 type ViewMode = "day" | "week" | "month";
@@ -24,8 +26,8 @@ export default function VolunteerScheduler() {
   const [schedule, setSchedule] = useState<Schedule>({});
   const [mode, setMode] = useState<ViewMode>("day");
   
-  const [selectedDay, setSelectedDay] = useState<Date | undefined>(startDate);
-  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
+  const [viewDate, setViewDate] = useState<Date>(startDate);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(startDate);
 
   const handleAddVolunteer = (date: Date, time: string, name: string) => {
     const dateKey = format(date, "yyyy-MM-dd");
@@ -40,64 +42,113 @@ export default function VolunteerScheduler() {
       return newSchedule;
     });
   };
-  
-  const handleDayClick = (day: Date) => {
-    if (day < startDate || day > endDate) return;
 
-    if (mode === "day") {
-      setSelectedDay(day);
-      setSelectedRange(undefined);
-    } else if (mode === "week") {
-      const from = startOfWeek(day, { locale: es });
-      const to = endOfWeek(day, { locale: es });
-      setSelectedRange({ from, to });
-      setSelectedDay(undefined);
-    } else {
-      const from = startOfMonth(day);
-      const to = endOfMonth(day);
-      setSelectedRange({ from, to });
-      setSelectedDay(undefined);
+  const handlePrev = () => {
+    if (mode === 'day') {
+      const newDate = subDays(viewDate, 1);
+      if (newDate >= startDate) setViewDate(newDate);
+    } else if (mode === 'week') {
+      const newDate = subWeeks(viewDate, 1);
+      if (isWithinInterval(startOfWeek(newDate, {locale: es}), {start: startDate, end: endDate})) {
+        setViewDate(newDate);
+      }
     }
   };
 
+  const handleNext = () => {
+    if (mode === 'day') {
+      const newDate = addDays(viewDate, 1);
+      if (newDate <= endDate) setViewDate(newDate);
+    } else if (mode === 'week') {
+      const newDate = addWeeks(viewDate, 1);
+      if (isWithinInterval(startOfWeek(newDate, {locale: es}), {start: startDate, end: endDate})) {
+        setViewDate(newDate);
+      }
+    }
+  };
+
+  const handleDayClickInCalendar = (day: Date) => {
+    if (day < startDate || day > endDate) return;
+    setViewDate(day);
+    setMode('day');
+  };
+
+  const { selectedDay, selectedRange } = useMemo(() => {
+    if (mode === 'day') {
+      return { selectedDay: viewDate, selectedRange: undefined };
+    }
+    if (mode === 'week') {
+      const from = startOfWeek(viewDate, { locale: es });
+      const to = endOfWeek(viewDate, { locale: es });
+      return { selectedDay: undefined, selectedRange: { from, to } };
+    }
+    if (mode === 'month') {
+        const from = startOfMonth(calendarMonth);
+        const to = endOfMonth(calendarMonth);
+        return { selectedDay: undefined, selectedRange: { from, to } };
+    }
+    return { selectedDay: undefined, selectedRange: undefined };
+  }, [mode, viewDate, calendarMonth]);
+  
   const summary = useMemo(() => {
-    if (mode === 'day' && selectedDay) {
-        const daySchedule = schedule[format(selectedDay, "yyyy-MM-dd")] || {};
-        const totalVolunteers = Object.values(daySchedule).flat().length;
-        const coveredSlots = Object.values(daySchedule).filter(v => v.length > 0).length;
-        const freeSlots = dailyTotalSlots - coveredSlots;
-        return { totalVolunteers, coveredSlots, freeSlots, totalSlots: dailyTotalSlots };
+    let daysToSummarize: Date[] = [];
+    if (selectedDay) {
+        daysToSummarize = [selectedDay];
+    } else if (selectedRange?.from && selectedRange?.to) {
+        daysToSummarize = eachDayOfInterval({ start: selectedRange.from, end: selectedRange.to });
+    }
+
+    const validDays = daysToSummarize.filter(d => isWithinInterval(d, {start: startDate, end: endDate}));
+    let totalVolunteers = 0;
+    let coveredSlots = 0;
+    
+    for (const day of validDays) {
+        const dateKey = format(day, "yyyy-MM-dd");
+        const daySchedule = schedule[dateKey] || {};
+        totalVolunteers += Object.values(daySchedule).flat().length;
+        coveredSlots += Object.values(daySchedule).filter(v => v.length > 0).length;
     }
     
-    if ((mode === 'week' || mode === 'month') && selectedRange?.from && selectedRange?.to) {
-        const daysInInterval = eachDayOfInterval({ start: selectedRange.from, end: selectedRange.to })
-            .filter(d => isWithinInterval(d, {start: startDate, end: endDate}));
-        
-        let totalVolunteers = 0;
-        let coveredSlots = 0;
+    const totalSlots = validDays.length * dailyTotalSlots;
+    const freeSlots = totalSlots - coveredSlots;
+    return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
+  }, [selectedDay, selectedRange, schedule]);
 
-        for (const day of daysInInterval) {
-            const dateKey = format(day, "yyyy-MM-dd");
-            const daySchedule = schedule[dateKey] || {};
-            totalVolunteers += Object.values(daySchedule).flat().length;
-            coveredSlots += Object.values(daySchedule).filter(v => v.length > 0).length;
-        }
-        
-        const totalSlots = daysInInterval.length * dailyTotalSlots;
-        const freeSlots = totalSlots - coveredSlots;
-        return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
-    }
+  const DayWeekNavigator = () => {
+    const title = mode === 'day' && selectedDay
+        ? format(selectedDay, "EEEE, d 'de' MMMM", { locale: es })
+        : mode === 'week' && selectedRange?.from
+        ? `${format(selectedRange.from, "d MMM", { locale: es })} - ${format(selectedRange.to, "d MMM, yyyy", { locale: es })}`
+        : '';
 
-    return { totalVolunteers: 0, coveredSlots: 0, freeSlots: dailyTotalSlots, totalSlots: dailyTotalSlots };
-  }, [mode, selectedDay, selectedRange, schedule]);
-
-  const selectedProp = mode === "day" ? selectedDay : selectedRange;
+    return (
+        <div className="p-4">
+            <div className="flex items-center justify-between">
+                <Button onClick={handlePrev} variant="outline" size="icon" aria-label="Anterior">
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <h3 className="text-sm font-semibold text-center capitalize grow px-2">
+                    {title}
+                </h3>
+                <Button onClick={handleNext} variant="outline" size="icon" aria-label="Siguiente">
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+    );
+  };
   
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
       <Card className="lg:col-span-1 shadow-lg">
         <div className="p-4 border-b">
-          <Tabs value={mode} onValueChange={(value) => setMode(value as ViewMode)} className="w-full">
+          <Tabs value={mode} onValueChange={(value) => {
+              const newMode = value as ViewMode;
+              setMode(newMode);
+              if (newMode === 'month' && !isSameMonth(viewDate, calendarMonth)) {
+                  setCalendarMonth(viewDate);
+              }
+          }} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="day">Día</TabsTrigger>
               <TabsTrigger value="week">Semana</TabsTrigger>
@@ -105,25 +156,27 @@ export default function VolunteerScheduler() {
             </TabsList>
           </Tabs>
         </div>
-        <Calendar
-          mode={mode === "day" ? "single" : "range"}
-          selected={selectedProp}
-          onDayClick={handleDayClick}
-          fromDate={startDate}
-          toDate={endDate}
-          disabled={(date) => date < startDate || date > endDate}
-          initialFocus={mode === 'day'}
-          locale={es}
-          className="p-4 flex justify-center"
-        />
+        {mode === 'month' ? (
+          <Calendar
+            mode="single"
+            month={calendarMonth}
+            onMonthChange={setCalendarMonth}
+            selected={viewDate}
+            onSelect={(day) => day && handleDayClickInCalendar(day)}
+            fromDate={startDate}
+            toDate={endDate}
+            disabled={(date) => date < startDate || date > endDate}
+            locale={es}
+            className="p-4 flex justify-center"
+          />
+        ) : (
+          <DayWeekNavigator />
+        )}
       </Card>
 
       <div className="lg:col-span-2 space-y-8">
         {mode === 'day' && selectedDay ? (
           <div className="space-y-8 transition-opacity duration-300">
-            <h2 className="text-3xl font-bold font-headline text-primary-foreground text-center capitalize">
-              {format(selectedDay, "EEEE, d 'de' MMMM", { locale: es })}
-            </h2>
             <div className="p-6 bg-card rounded-xl shadow-lg">
               <h3 className="text-xl font-semibold mb-4 text-primary">Mañana (9:00 - 13:00)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -152,16 +205,19 @@ export default function VolunteerScheduler() {
             </div>
             <SummaryCard {...summary} />
           </div>
-        ) : mode !== 'day' && selectedRange?.from && selectedRange?.to ? (
+        ) : (mode === 'week' || mode === 'month') && selectedRange?.from && selectedRange?.to ? (
           <div className="space-y-8 transition-opacity duration-300">
              <h2 className="text-3xl font-bold font-headline text-primary-foreground text-center capitalize">
-              {format(selectedRange.from, "d MMM", { locale: es })} - {format(selectedRange.to, "d MMM, yyyy", { locale: es })}
+              {mode === 'week' 
+                ? `${format(selectedRange.from, "d MMM", { locale: es })} - ${format(selectedRange.to, "d MMM, yyyy", { locale: es })}`
+                : format(selectedRange.from, "MMMM 'de' yyyy", { locale: es })
+              }
             </h2>
             <SummaryCard {...summary} />
           </div>
         ) : (
           <Card className="flex items-center justify-center h-96 lg:col-span-2 shadow-lg">
-              <p className="text-muted-foreground p-4 text-center">Por favor, selecciona una fecha en el calendario para ver los horarios disponibles.</p>
+              <p className="text-muted-foreground p-4 text-center">Selecciona un rango en el panel de la izquierda.</p>
           </Card>
         )}
       </div>
