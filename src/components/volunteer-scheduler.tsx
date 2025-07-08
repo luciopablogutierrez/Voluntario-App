@@ -92,9 +92,9 @@ export default function VolunteerScheduler() {
   
   const summary = useMemo(() => {
     let daysToSummarize: Date[] = [];
-    if (selectedDay) {
+    if (mode === 'day' && selectedDay) {
         daysToSummarize = [selectedDay];
-    } else if (selectedRange?.from && selectedRange?.to) {
+    } else if ((mode === 'week' || mode === 'month') && selectedRange?.from && selectedRange?.to) {
         daysToSummarize = eachDayOfInterval({ start: selectedRange.from, end: selectedRange.to });
     }
 
@@ -112,7 +112,7 @@ export default function VolunteerScheduler() {
     const totalSlots = validDays.length * dailyTotalSlots;
     const freeSlots = totalSlots - coveredSlots;
     return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
-  }, [selectedDay, selectedRange, schedule]);
+  }, [mode, selectedDay, selectedRange, schedule]);
 
   const DayWeekNavigator = () => {
     const title = mode === 'day' && selectedDay
@@ -122,18 +122,16 @@ export default function VolunteerScheduler() {
         : '';
 
     return (
-        <div className="p-4">
-            <div className="flex items-center justify-between">
-                <Button onClick={handlePrev} variant="outline" size="icon" aria-label="Anterior">
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <h3 className="text-sm font-semibold text-center capitalize grow px-2">
-                    {title}
-                </h3>
-                <Button onClick={handleNext} variant="outline" size="icon" aria-label="Siguiente">
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
-            </div>
+        <div className="flex items-center justify-between">
+            <Button onClick={handlePrev} variant="outline" size="icon" aria-label="Anterior">
+                <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <h3 className="text-sm font-semibold text-center capitalize grow px-2">
+                {title}
+            </h3>
+            <Button onClick={handleNext} variant="outline" size="icon" aria-label="Siguiente">
+                <ChevronRight className="h-4 w-4" />
+            </Button>
         </div>
     );
   };
@@ -156,21 +154,44 @@ export default function VolunteerScheduler() {
             </TabsList>
           </Tabs>
         </div>
-        {mode === 'month' ? (
+        
+        {mode === 'day' && (
+          <div className="p-4">
+            <DayWeekNavigator />
+          </div>
+        )}
+
+        {mode === 'week' && (
+          <div className="p-4">
+            <DayWeekNavigator />
+            <Calendar
+              mode="range"
+              month={viewDate}
+              onMonthChange={setViewDate}
+              selected={selectedRange}
+              onDayClick={(day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
+              fromDate={startDate}
+              toDate={endDate}
+              disabled={(date) => date < startDate || date > endDate}
+              locale={es}
+              className="mt-4 flex justify-center"
+            />
+          </div>
+        )}
+
+        {mode === 'month' && (
           <Calendar
-            mode="single"
+            mode="range"
             month={calendarMonth}
             onMonthChange={setCalendarMonth}
-            selected={viewDate}
-            onSelect={(day) => day && handleDayClickInCalendar(day)}
+            selected={selectedRange}
+            onDayClick={(day, modifiers) => !modifiers.disabled && handleDayClickInCalendar(day)}
             fromDate={startDate}
             toDate={endDate}
             disabled={(date) => date < startDate || date > endDate}
             locale={es}
             className="p-4 flex justify-center"
           />
-        ) : (
-          <DayWeekNavigator />
         )}
       </Card>
 
@@ -217,7 +238,7 @@ export default function VolunteerScheduler() {
           </div>
         ) : (
           <Card className="flex items-center justify-center h-96 lg:col-span-2 shadow-lg">
-              <p className="text-muted-foreground p-4 text-center">Selecciona un rango en el panel de la izquierda.</p>
+              <p className="text-muted-foreground p-4 text-center">Selecciona un día o rango en el panel de la izquierda.</p>
           </Card>
         )}
       </div>
