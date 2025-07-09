@@ -1,29 +1,20 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { UserPlus, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getContrastColor } from "@/lib/utils";
+import type { Volunteer } from "@/app/actions";
+import { VolunteerInput } from "./volunteer-input";
 
 interface TimeSlotCardProps {
   time: string;
-  volunteers: string[];
+  volunteers: Volunteer[];
+  allVolunteers: Volunteer[];
   onAddVolunteer: (name: string) => void;
 }
 
-export function TimeSlotCard({ time, volunteers, onAddVolunteer }: TimeSlotCardProps) {
-  const [name, setName] = useState("");
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (name.trim()) {
-      onAddVolunteer(name.trim());
-      setName("");
-    }
-  };
-  
+export function TimeSlotCard({ time, volunteers = [], allVolunteers, onAddVolunteer }: TimeSlotCardProps) {
   const endTime = `${(parseInt(time.split(':')[0]) + 1).toString().padStart(2, '0')}:00`;
 
   return (
@@ -40,9 +31,17 @@ export function TimeSlotCard({ time, volunteers, onAddVolunteer }: TimeSlotCardP
       <CardContent className="flex-grow min-h-[4rem]">
         <div className="flex flex-wrap gap-2">
           {volunteers.length > 0 ? (
-            volunteers.map((volunteer, index) => (
-              <Badge key={index} variant="secondary" className="text-base font-medium">
-                {volunteer}
+            volunteers.map((volunteer) => (
+              <Badge 
+                key={volunteer.id} 
+                variant="secondary" 
+                className="text-base font-medium border-transparent"
+                style={{
+                  backgroundColor: volunteer.color,
+                  color: getContrastColor(volunteer.color)
+                }}
+              >
+                {volunteer.name}
               </Badge>
             ))
           ) : (
@@ -51,19 +50,7 @@ export function TimeSlotCard({ time, volunteers, onAddVolunteer }: TimeSlotCardP
         </div>
       </CardContent>
       <CardFooter>
-        <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
-          <Input
-            type="text"
-            placeholder="Nombre del voluntario"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="bg-background"
-            aria-label="Nombre del voluntario"
-          />
-          <Button type="submit" size="icon" className="bg-accent hover:bg-accent/90 shrink-0 text-accent-foreground" aria-label="Agregar voluntario">
-            <UserPlus className="h-5 w-5" />
-          </Button>
-        </form>
+        <VolunteerInput allVolunteers={allVolunteers} onAddVolunteer={onAddVolunteer} />
       </CardFooter>
     </Card>
   );

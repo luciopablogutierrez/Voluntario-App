@@ -29,12 +29,12 @@ export function SummaryCard({ totalVolunteers, coveredSlots, freeSlots, totalSlo
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl font-semibold text-card-foreground">
           <Users className="w-6 h-6" />
-          Resumen del Día
+          Resumen
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <Stat value={totalVolunteers} label="Voluntarios" colorClass="text-primary" />
+            <Stat value={totalVolunteers} label="Voluntarios Únicos" colorClass="text-primary" />
             <Stat value={coveredSlots} label="Slots Cubiertos" colorClass="text-chart-2" />
             <Stat value={freeSlots} label="Slots Libres" colorClass="text-accent" />
             <Stat value={totalSlots} label="Total Slots" colorClass="text-chart-4" />

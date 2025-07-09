@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth } from "date-fns";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth, parse } from "date-fns";
 import { es } from "date-fns/locale";
-import type { DateRange } from "react-day-picker";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { TimeSlotCard } from "@/components/time-slot-card";
@@ -11,8 +10,8 @@ import { SummaryCard } from "@/components/summary-card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getVolunteers, getScheduleForDate, addVolunteerToSlot, type DaySchedule, type Volunteer } from "@/app/actions";
 
-type Schedule = Record<string, Record<string, string[]>>;
 type ViewMode = "day" | "week" | "month";
 
 const morningSlots = ["09:00", "10:00", "11:00", "12:00"];
@@ -23,24 +22,72 @@ const endDate = new Date("2024-09-07T23:59:59");
 const dailyTotalSlots = morningSlots.length + afternoonSlots.length;
 
 export default function VolunteerScheduler() {
-  const [schedule, setSchedule] = useState<Schedule>({});
+  const [schedule, setSchedule] = useState<DaySchedule>({});
+  const [allVolunteers, setAllVolunteers] = useState<Volunteer[]>([]);
   const [mode, setMode] = useState<ViewMode>("day");
   
   const [viewDate, setViewDate] = useState<Date>(startDate);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startDate);
 
-  const handleAddVolunteer = (date: Date, time: string, name: string) => {
+  useEffect(() => {
+    getVolunteers().then(setAllVolunteers);
+  }, []);
+
+  const fetchSchedule = useCallback(async (currentViewDate: Date, currentMode: ViewMode) => {
+    let range: { start: Date; end: Date };
+
+    if (currentMode === 'day') {
+      range = { start: currentViewDate, end: currentViewDate };
+    } else if (currentMode === 'week') {
+      range = { start: startOfWeek(currentViewDate, { locale: es }), end: endOfWeek(currentViewDate, { locale: es }) };
+    } else { // month
+      range = { start: startOfMonth(calendarMonth), end: endOfMonth(calendarMonth) };
+    }
+    
+    const daysToFetch = eachDayOfInterval(range);
+    const newSchedule: DaySchedule = {};
+    
+    for (const day of daysToFetch) {
+      if (isWithinInterval(day, { start: startDate, end: endDate })) {
+        const dateKey = format(day, "yyyy-MM-dd");
+        const daySchedule = await getScheduleForDate(day);
+        if (Object.keys(daySchedule).length > 0) {
+          newSchedule[dateKey] = daySchedule;
+        }
+      }
+    }
+
+    setSchedule(prev => ({ ...prev, ...newSchedule }));
+  }, [calendarMonth]);
+
+  useEffect(() => {
+    fetchSchedule(viewDate, mode);
+  }, [viewDate, mode, calendarMonth, fetchSchedule]);
+
+
+  const handleAddVolunteer = async (date: Date, time: string, name: string) => {
+    const newVolunteerInSlot = await addVolunteerToSlot(date, time, name);
+    
+    // Optimistically update schedule
     const dateKey = format(date, "yyyy-MM-dd");
-    setSchedule((prev) => {
-      const newSchedule = { ...prev };
-      const daySchedule = newSchedule[dateKey] || {};
-      const slotVolunteers = daySchedule[time] || [];
-      newSchedule[dateKey] = {
-        ...daySchedule,
-        [time]: [...slotVolunteers, name.trim()],
-      };
-      return newSchedule;
+    setSchedule(prev => {
+        const updatedSchedule = { ...prev };
+        const daySchedule = updatedSchedule[dateKey] || {};
+        const slotVolunteers = daySchedule[time] || [];
+        // Prevent adding duplicates visually
+        if (!slotVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
+            updatedSchedule[dateKey] = {
+                ...daySchedule,
+                [time]: [...slotVolunteers, newVolunteerInSlot],
+            };
+        }
+        return updatedSchedule;
     });
+
+    // Update allVolunteers list if it's a new one
+    if (!allVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
+        setAllVolunteers(prev => [...prev, newVolunteerInSlot]);
+    }
   };
 
   const handlePrev = () => {
@@ -99,19 +146,20 @@ export default function VolunteerScheduler() {
     }
 
     const validDays = daysToSummarize.filter(d => isWithinInterval(d, {start: startDate, end: endDate}));
-    let totalVolunteers = 0;
+    const volunteersInPeriod = new Set<string>();
     let coveredSlots = 0;
     
     for (const day of validDays) {
         const dateKey = format(day, "yyyy-MM-dd");
         const daySchedule = schedule[dateKey] || {};
-        totalVolunteers += Object.values(daySchedule).flat().length;
-        coveredSlots += Object.values(daySchedule).filter(v => v.length > 0).length;
+        const volunteersToday = Object.values(daySchedule).flat();
+        volunteersToday.forEach(v => volunteersInPeriod.add(v.name));
+        coveredSlots += Object.values(daySchedule).filter(v => (v || []).length > 0).length;
     }
     
     const totalSlots = validDays.length * dailyTotalSlots;
     const freeSlots = totalSlots - coveredSlots;
-    return { totalVolunteers, coveredSlots, freeSlots, totalSlots };
+    return { totalVolunteers: volunteersInPeriod.size, coveredSlots, freeSlots, totalSlots };
   }, [mode, selectedDay, selectedRange, schedule]);
 
   const DayWeekNavigator = () => {
@@ -205,7 +253,8 @@ export default function VolunteerScheduler() {
                   <TimeSlotCard
                     key={time}
                     time={time}
-                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time] || []}
+                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time]}
+                    allVolunteers={allVolunteers}
                     onAddVolunteer={(name) => handleAddVolunteer(selectedDay, time, name)}
                   />
                 ))}
@@ -218,7 +267,8 @@ export default function VolunteerScheduler() {
                   <TimeSlotCard
                     key={time}
                     time={time}
-                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time] || []}
+                    volunteers={(schedule[format(selectedDay, "yyyy-MM-dd")] || {})[time]}
+                    allVolunteers={allVolunteers}
                     onAddVolunteer={(name) => handleAddVolunteer(selectedDay, time, name)}
                   />
                 ))}
