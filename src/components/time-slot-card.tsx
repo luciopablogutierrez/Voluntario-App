@@ -9,7 +9,7 @@ import { VolunteerInput } from "./volunteer-input";
 
 interface TimeSlotCardProps {
   time: string;
-  volunteers: Volunteer[];
+  volunteers: Omit<Volunteer, 'id'>[];
   allVolunteers: Volunteer[];
   onAddVolunteer: (name: string) => void;
 }
@@ -33,7 +33,7 @@ export function TimeSlotCard({ time, volunteers = [], allVolunteers, onAddVolunt
           {volunteers.length > 0 ? (
             volunteers.map((volunteer) => (
               <Badge 
-                key={volunteer.id} 
+                key={volunteer.name} 
                 variant="secondary" 
                 className="text-base font-medium border-transparent"
                 style={{

@@ -12,7 +12,7 @@ export interface Volunteer {
 }
 
 export interface ScheduleSlot {
-  [time: string]: Volunteer[];
+  [time: string]: Omit<Volunteer, 'id'>[];
 }
 
 export interface DaySchedule {
@@ -30,7 +30,7 @@ export async function getVolunteers(): Promise<Volunteer[]> {
   }
 }
 
-export async function getScheduleForDate(date: Date): Promise<ScheduleSlot> {
+export async function getScheduleForDate(date: Date): Promise<ScheduleSlot | null> {
   try {
     const dateKey = format(date, "yyyy-MM-dd");
     const scheduleRef = doc(db, 'schedules', dateKey);
@@ -38,10 +38,10 @@ export async function getScheduleForDate(date: Date): Promise<ScheduleSlot> {
     if (docSnap.exists()) {
         return docSnap.data() as ScheduleSlot;
     }
-    return {};
+    return null;
   } catch (error) {
     console.error(`Error fetching schedule for ${format(date, "yyyy-MM-dd")}:`, error);
-    return {};
+    return null;
   }
 }
 
@@ -53,6 +53,7 @@ export async function addVolunteerToSlot(date: Date, time: string, name: string)
     const snapshot = await getDocs(q);
 
     let volunteer: Volunteer;
+    let volunteerDataForSlot: Omit<Volunteer, 'id'>;
 
     if (snapshot.empty) {
       const allVolunteers = await getVolunteers();
@@ -61,15 +62,27 @@ export async function addVolunteerToSlot(date: Date, time: string, name: string)
       const newVolunteerData = { name: name.trim(), color: newColor };
       const docRef = await addDoc(volunteersCol, newVolunteerData);
       volunteer = { id: docRef.id, ...newVolunteerData };
+      volunteerDataForSlot = newVolunteerData;
     } else {
       const docData = snapshot.docs[0];
-      volunteer = { id: docData.id, ...docData.data() } as Volunteer;
+      const existingVolunteer = docData.data();
+      volunteer = { id: docData.id, ...existingVolunteer } as Volunteer;
+      volunteerDataForSlot = { name: volunteer.name, color: volunteer.color };
     }
 
     const scheduleRef = doc(db, 'schedules', dateKey);
-    await setDoc(scheduleRef, { 
-        [time]: arrayUnion(volunteer) 
-    }, { merge: true });
+    
+    const docSnap = await getDoc(scheduleRef);
+    const currentData = docSnap.exists() ? docSnap.data() : {};
+    const slotVolunteers = (currentData[time] || []) as Omit<Volunteer, 'id'>[];
+    
+    const alreadyExists = slotVolunteers.some(v => v.name === volunteerDataForSlot.name);
+
+    if (!alreadyExists) {
+        await setDoc(scheduleRef, { 
+            [time]: arrayUnion(volunteerDataForSlot) 
+        }, { merge: true });
+    }
 
     return volunteer;
   } catch (error) {

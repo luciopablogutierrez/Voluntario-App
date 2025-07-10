@@ -53,7 +53,7 @@ export default function VolunteerScheduler() {
       if (isWithinInterval(day, { start: startDate, end: endDate })) {
         const dateKey = format(day, "yyyy-MM-dd");
         const daySchedule = await getScheduleForDate(day);
-        if (Object.keys(daySchedule).length > 0) {
+        if (daySchedule && Object.keys(daySchedule).length > 0) {
           newSchedule[dateKey] = daySchedule;
         }
       }
@@ -77,11 +77,11 @@ export default function VolunteerScheduler() {
             const updatedSchedule = { ...prev };
             const daySchedule = updatedSchedule[dateKey] || {};
             const slotVolunteers = daySchedule[time] || [];
-            // Prevent adding duplicates visually
-            if (!slotVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
+            
+            if (!slotVolunteers.some(v => v.name === newVolunteerInSlot.name)) {
                 updatedSchedule[dateKey] = {
                     ...daySchedule,
-                    [time]: [...slotVolunteers, newVolunteerInSlot],
+                    [time]: [...slotVolunteers, {name: newVolunteerInSlot.name, color: newVolunteerInSlot.color}],
                 };
             }
             return updatedSchedule;
