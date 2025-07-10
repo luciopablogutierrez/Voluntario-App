@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
@@ -9,14 +9,17 @@ import { TimeSlotCard } from "@/components/time-slot-card";
 import { SummaryCard } from "@/components/summary-card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { getVolunteers, getScheduleForDate, addVolunteerToSlot, type DaySchedule, type Volunteer } from "@/app/actions";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { getVolunteers, getScheduleForDate, addVolunteerToSlot, getFullSchedule, type DaySchedule, type Volunteer } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 type ViewMode = "day" | "week" | "month";
 
 const morningSlots = ["09:00", "10:00", "11:00", "12:00"];
 const afternoonSlots = ["16:00", "17:00", "18:00", "19:00"];
+const allSlots = [...morningSlots, ...afternoonSlots];
 const startDate = new Date("2024-07-18T00:00:00");
 const endDate = new Date("2024-09-07T23:59:59");
 
@@ -29,6 +32,7 @@ export default function VolunteerScheduler() {
   
   const [viewDate, setViewDate] = useState<Date>(startDate);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startDate);
+  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -52,15 +56,19 @@ export default function VolunteerScheduler() {
     for (const day of daysToFetch) {
       if (isWithinInterval(day, { start: startDate, end: endDate })) {
         const dateKey = format(day, "yyyy-MM-dd");
-        const daySchedule = await getScheduleForDate(day);
-        if (daySchedule && Object.keys(daySchedule).length > 0) {
-          newSchedule[dateKey] = daySchedule;
+        if (!schedule[dateKey]) { // Fetch only if not already in state
+            const daySchedule = await getScheduleForDate(day);
+            if (daySchedule && Object.keys(daySchedule).length > 0) {
+              newSchedule[dateKey] = daySchedule;
+            }
         }
       }
     }
 
-    setSchedule(prev => ({ ...prev, ...newSchedule }));
-  }, [calendarMonth]);
+    if (Object.keys(newSchedule).length > 0) {
+        setSchedule(prev => ({ ...prev, ...newSchedule }));
+    }
+  }, [calendarMonth, schedule]);
 
   useEffect(() => {
     fetchSchedule(viewDate, mode);
@@ -171,6 +179,47 @@ export default function VolunteerScheduler() {
     const freeSlots = totalSlots - coveredSlots;
     return { totalVolunteers: volunteersInPeriod.size, coveredSlots, freeSlots, totalSlots };
   }, [mode, selectedDay, selectedRange, schedule]);
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    toast({ title: 'Generando PDF...', description: 'Esto puede tardar unos segundos.' });
+
+    try {
+        const fullSchedule = await getFullSchedule();
+        const doc = new jsPDF({ orientation: 'landscape' });
+
+        // @ts-ignore
+        doc.autoTable({
+            head: [['Fecha', ...allSlots]],
+            body: Object.keys(fullSchedule).sort().map(dateKey => {
+                const daySchedule = fullSchedule[dateKey];
+                const formattedDate = format(parseISO(dateKey), "eeee, dd 'de' MMMM", { locale: es });
+                const row: (string | string[])[] = [formattedDate];
+
+                allSlots.forEach(slot => {
+                    const volunteers = daySchedule[slot] || [];
+                    row.push(volunteers.map(v => v.name).join(',\n'));
+                });
+                return row;
+            }),
+            startY: 20,
+            headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [245, 245, 245] },
+            didDrawPage: (data: any) => {
+                doc.setFontSize(16);
+                doc.setTextColor(40);
+                doc.text('Cronograma Completo de Voluntarios', data.settings.margin.left, 15);
+            }
+        });
+
+        doc.save('cronograma-voluntarios.pdf');
+    } catch (error) {
+        console.error("Error exporting to PDF:", error);
+        toast({ variant: 'destructive', title: 'Error al exportar', description: 'No se pudo generar el PDF.' });
+    } finally {
+        setIsExporting(false);
+    }
+  };
 
   const DayWeekNavigator = () => {
     const title = mode === 'day' && selectedDay
@@ -285,6 +334,12 @@ export default function VolunteerScheduler() {
               </div>
             </div>
             <SummaryCard {...summary} />
+            <div className="flex justify-center pt-4">
+                <Button onClick={handleExportPDF} disabled={isExporting}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {isExporting ? 'Exportando...' : 'Exportar a PDF'}
+                </Button>
+            </div>
           </div>
         ) : (mode === 'week' || mode === 'month') && selectedRange?.from && selectedRange?.to ? (
           <div className="space-y-8 transition-opacity duration-300">
@@ -295,6 +350,12 @@ export default function VolunteerScheduler() {
               }
             </h2>
             <SummaryCard {...summary} />
+            <div className="flex justify-center pt-4">
+                <Button onClick={handleExportPDF} disabled={isExporting}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {isExporting ? 'Exportando...' : 'Exportar a PDF'}
+                </Button>
+            </div>
           </div>
         ) : (
           <Card className="flex items-center justify-center h-96 lg:col-span-2 shadow-lg">

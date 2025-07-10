@@ -90,3 +90,18 @@ export async function addVolunteerToSlot(date: Date, time: string, name: string)
     return null;
   }
 }
+
+export async function getFullSchedule(): Promise<DaySchedule> {
+  try {
+    const scheduleCol = collection(db, 'schedules');
+    const snapshot = await getDocs(scheduleCol);
+    const fullSchedule: DaySchedule = {};
+    snapshot.forEach(doc => {
+        fullSchedule[doc.id] = doc.data() as ScheduleSlot;
+    });
+    return fullSchedule;
+  } catch (error) {
+    console.error("Error fetching full schedule:", error);
+    return {};
+  }
+}
