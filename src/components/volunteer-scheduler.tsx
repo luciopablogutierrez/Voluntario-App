@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth, parse } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, addDays, subDays, addWeeks, subWeeks, isSameMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getVolunteers, getScheduleForDate, addVolunteerToSlot, type DaySchedule, type Volunteer } from "@/app/actions";
+import { useToast } from "@/hooks/use-toast";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -28,6 +29,7 @@ export default function VolunteerScheduler() {
   
   const [viewDate, setViewDate] = useState<Date>(startDate);
   const [calendarMonth, setCalendarMonth] = useState<Date>(startDate);
+  const { toast } = useToast();
 
   useEffect(() => {
     getVolunteers().then(setAllVolunteers);
@@ -68,25 +70,33 @@ export default function VolunteerScheduler() {
   const handleAddVolunteer = async (date: Date, time: string, name: string) => {
     const newVolunteerInSlot = await addVolunteerToSlot(date, time, name);
     
-    // Optimistically update schedule
-    const dateKey = format(date, "yyyy-MM-dd");
-    setSchedule(prev => {
-        const updatedSchedule = { ...prev };
-        const daySchedule = updatedSchedule[dateKey] || {};
-        const slotVolunteers = daySchedule[time] || [];
-        // Prevent adding duplicates visually
-        if (!slotVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
-            updatedSchedule[dateKey] = {
-                ...daySchedule,
-                [time]: [...slotVolunteers, newVolunteerInSlot],
-            };
-        }
-        return updatedSchedule;
-    });
+    if (newVolunteerInSlot) {
+        // Optimistically update schedule
+        const dateKey = format(date, "yyyy-MM-dd");
+        setSchedule(prev => {
+            const updatedSchedule = { ...prev };
+            const daySchedule = updatedSchedule[dateKey] || {};
+            const slotVolunteers = daySchedule[time] || [];
+            // Prevent adding duplicates visually
+            if (!slotVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
+                updatedSchedule[dateKey] = {
+                    ...daySchedule,
+                    [time]: [...slotVolunteers, newVolunteerInSlot],
+                };
+            }
+            return updatedSchedule;
+        });
 
-    // Update allVolunteers list if it's a new one
-    if (!allVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
-        setAllVolunteers(prev => [...prev, newVolunteerInSlot]);
+        // Update allVolunteers list if it's a new one
+        if (!allVolunteers.some(v => v.id === newVolunteerInSlot.id)) {
+            setAllVolunteers(prev => [...prev, newVolunteerInSlot]);
+        }
+    } else {
+        toast({
+            variant: "destructive",
+            title: "Error de conexión",
+            description: "No se pudo registrar al voluntario. Revisa tu conexión a internet o la configuración de Firebase.",
+        });
     }
   };
 

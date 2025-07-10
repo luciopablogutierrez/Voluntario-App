@@ -20,12 +20,18 @@ export interface DaySchedule {
 }
 
 export async function getVolunteers(): Promise<Volunteer[]> {
+  try {
     const volunteersCol = collection(db, 'volunteers');
     const snapshot = await getDocs(volunteersCol);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Volunteer));
+  } catch (error) {
+    console.error("Error fetching volunteers:", error);
+    return [];
+  }
 }
 
 export async function getScheduleForDate(date: Date): Promise<ScheduleSlot> {
+  try {
     const dateKey = format(date, "yyyy-MM-dd");
     const scheduleRef = doc(db, 'schedules', dateKey);
     const docSnap = await getDoc(scheduleRef);
@@ -33,32 +39,41 @@ export async function getScheduleForDate(date: Date): Promise<ScheduleSlot> {
         return docSnap.data() as ScheduleSlot;
     }
     return {};
+  } catch (error) {
+    console.error(`Error fetching schedule for ${format(date, "yyyy-MM-dd")}:`, error);
+    return {};
+  }
 }
 
-export async function addVolunteerToSlot(date: Date, time: string, name: string): Promise<Volunteer> {
-  const dateKey = format(date, 'yyyy-MM-dd');
-  const volunteersCol = collection(db, 'volunteers');
-  const q = query(volunteersCol, where('name', '==', name.trim()));
-  const snapshot = await getDocs(q);
+export async function addVolunteerToSlot(date: Date, time: string, name: string): Promise<Volunteer | null> {
+  try {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const volunteersCol = collection(db, 'volunteers');
+    const q = query(volunteersCol, where('name', '==', name.trim()));
+    const snapshot = await getDocs(q);
 
-  let volunteer: Volunteer;
+    let volunteer: Volunteer;
 
-  if (snapshot.empty) {
-    const allVolunteers = await getVolunteers();
-    const existingColors = allVolunteers.map(v => v.color);
-    const newColor = getNextColor(existingColors);
-    const newVolunteerData = { name: name.trim(), color: newColor };
-    const docRef = await addDoc(volunteersCol, newVolunteerData);
-    volunteer = { id: docRef.id, ...newVolunteerData };
-  } else {
-    const docData = snapshot.docs[0];
-    volunteer = { id: docData.id, ...docData.data() } as Volunteer;
+    if (snapshot.empty) {
+      const allVolunteers = await getVolunteers();
+      const existingColors = allVolunteers.map(v => v.color);
+      const newColor = getNextColor(existingColors);
+      const newVolunteerData = { name: name.trim(), color: newColor };
+      const docRef = await addDoc(volunteersCol, newVolunteerData);
+      volunteer = { id: docRef.id, ...newVolunteerData };
+    } else {
+      const docData = snapshot.docs[0];
+      volunteer = { id: docData.id, ...docData.data() } as Volunteer;
+    }
+
+    const scheduleRef = doc(db, 'schedules', dateKey);
+    await setDoc(scheduleRef, { 
+        [time]: arrayUnion(volunteer) 
+    }, { merge: true });
+
+    return volunteer;
+  } catch (error) {
+    console.error(`Error adding volunteer to slot for ${format(date, 'yyyy-MM-dd')} at ${time}:`, error);
+    return null;
   }
-
-  const scheduleRef = doc(db, 'schedules', dateKey);
-  await setDoc(scheduleRef, { 
-      [time]: arrayUnion(volunteer) 
-  }, { merge: true });
-
-  return volunteer;
 }
