@@ -34,11 +34,11 @@ export function TimeSlotCard({ time, volunteers = [], allVolunteers, onAddVolunt
             volunteers.map((volunteer) => (
               <Badge 
                 key={volunteer.name} 
-                variant="secondary" 
-                className="text-base font-medium border-transparent"
+                className="text-base font-medium"
                 style={{
                   backgroundColor: volunteer.color,
-                  color: getContrastColor(volunteer.color)
+                  color: getContrastColor(volunteer.color),
+                  border: `1px solid ${getContrastColor(volunteer.color)}`
                 }}
               >
                 {volunteer.name}
