@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { UserPlus } from 'lucide-react';
 import type { Volunteer } from '@/app/actions';
@@ -44,7 +44,7 @@ export function VolunteerInput({ allVolunteers, onAddVolunteer }: VolunteerInput
   return (
     <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
        <Popover open={open} onOpenChange={setOpen}>
-        <PopoverAnchor asChild>
+        <PopoverTrigger asChild>
           <div className="w-full">
             <Input
               type="text"
@@ -56,7 +56,7 @@ export function VolunteerInput({ allVolunteers, onAddVolunteer }: VolunteerInput
               autoComplete="off"
             />
           </div>
-        </PopoverAnchor>
+        </PopoverTrigger>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandList>
