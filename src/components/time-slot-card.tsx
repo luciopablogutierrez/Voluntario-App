@@ -28,12 +28,12 @@ export function TimeSlotCard({ time, volunteers = [], allVolunteers, onAddVolunt
           {volunteers.length > 0 ? `${volunteers.length} voluntario(s) registrado(s)` : 'Aún no hay voluntarios'}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow min-h-[4rem]">
+      <CardContent className="flex-grow min-h-[4rem] flex flex-col justify-center items-start lg:block">
         <div className="flex flex-wrap gap-2">
           {volunteers.length > 0 ? (
             volunteers.map((volunteer) => (
-              <Badge 
-                key={volunteer.name} 
+              <Badge
+                key={volunteer.name}
                 className="text-base font-medium"
                 style={{
                   backgroundColor: volunteer.color,
